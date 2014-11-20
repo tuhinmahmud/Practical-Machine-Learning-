@@ -1,0 +1,118 @@
+---
+title: "ML_Project"
+author: "tuhin mahmud"
+date: "Tuesday, November 18, 2014"
+output: html_document
+---
+#Synopsis
+The goal of this study is to explore  data about personal activity. A group of enthusiasts who take measurements about themselves regularly to improve their health. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project,our goal is to to use data from accelerometers and predict the manner in which participants did the exercise.
+
+Summary of the findings:
+yaw_belt, max_roll_belt were found to be  the predictors most important this prediction study.
+
+
+#Data Processing
+##Loading the data
+```{r}
+library(caret)
+fileUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#download.file(fileUrl,"pml-training.csv")
+fileUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#download.file(fileUrl,"pml-testing.csv")
+#df = read.csv(fileUrl, sep="", header=FALSE)
+pmltrain <- read.csv("pml-training.csv", sep=",", header=TRUE)
+pmltest <- read.csv("pml-testing.csv", sep=",", header=TRUE)
+```
+##Data Preprocessing
+```{r}
+library(caret)
+library(VIM)
+library(randomForest)
+#Data Splitting
+set.seed(32768)
+trainidx <- createDataPartition(pmltrain$classe,p=.9,list=FALSE)
+traindata = pmltrain[trainidx,]
+testdata = pmltrain[-trainidx,]
+##impute training data for missing data
+barMiss(traindata)
+
+#remove variables with low number of unique occurance 
+#pruneCol <- function(dat) {
+#    out <- lapply(dat, function(x) length(unique(x)))
+#    dontwant <- which(out < 10)
+#    unlist(dontwant)
+#}
+#pruneCol(traindata)
+#pruneCol(testdata)
+
+## predictors that result in absolute pairwise correlations greater than 0.90 ## can be removed using the findCorrelation function.
+## reference http://www.jstatsoft.org/v28/i05/paper
+ncol(traindata)
+ncol(testdata)
+ncol(pmltest)
+idx <- which(lapply(traindata,class) %in% c('numeric'))
+tCorr <- cor(traindata[,idx],use="pairwise.complete.obs")
+highCorr <- findCorrelation(tCorr, 0.90)
+traindata<-traindata[, -highCorr]
+testdata<-testdata[, -highCorr]
+pmltest<-pmltest[, -highCorr]
+ncol(traindata)
+ncol(testdata)
+ncol(pmltest)
+
+#Impute columns which are numeric using knn
+idx <- which(lapply(traindata,class) %in% c('numeric'))
+traindataImp <- preProcess(traindata[,idx], method=c('knnImpute'))
+```
+#Training
+Use Random Forest 
+```{r}
+pt <- predict(traindataImp, traindata[,idx])
+ptrain <- cbind(traindata$classe,pt)
+names(ptrain)[1] <- 'classe'
+ptrain[is.na(ptrain)] <- 0
+
+ptst<- predict(traindataImp, testdata[,idx])
+ptest <- cbind(testdata$classe, ptst)
+names(ptest)[1] <- 'classe'
+ptest[is.na(ptest)] <- 0
+
+
+mltest <- predict(traindataImp,pmltest[,idx] )
+model <- randomForest(classe~.,data=ptrain,importance=TRUE)
+```
+## Cross Validation for different predictors
+```{r}
+varImpPlot(model)
+varImp(model)
+```
+## Evaluation of model predictions in traing  and test data
+```{r}
+
+#get the confusion matrix for the prediction vs  outcome.
+
+
+tpredictions <- predict(model, pt)
+confusionMatrix(tpredictions,traindata$classe)
+
+tpredictions <- predict(model, ptst)
+confusionMatrix(tpredictions,testdata$classe)
+
+# get the prediction results
+predictions <- predict(model, mltest) 
+predictions
+```
+#Results
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictions)
+```
+
+
+
